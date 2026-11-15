@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FastAPI Real-Time Chat</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="page">
+    <header class="topbar">
+      <div>
+        <h1>Realtime Chat</h1>
+        <p>FastAPI · WebSockets · Redis</p>
+      </div>
+      <button id="logoutBtn" class="secondary hidden">Log out</button>
+    </header>
+
+    <section id="authPanel" class="panel auth-panel">
+      <div class="tabs">
+        <button id="showLogin" class="tab active">Login</button>
+        <button id="showRegister" class="tab">Register</button>
+      </div>
+      <form id="authForm">
+        <label id="usernameLabel" class="hidden">Username
+          <input id="username" minlength="3" maxlength="40" autocomplete="username">
+        </label>
+        <label>Email
+          <input id="email" type="email" required autocomplete="email">
+        </label>
+        <label>Password
+          <input id="password" type="password" minlength="8" required autocomplete="current-password">
+        </label>
+        <button id="authSubmit" type="submit">Login</button>
+      </form>
+      <p id="authMessage" class="status"></p>
+      <div class="auth-divider"><span>or</span></div>
+      <a class="oauth-button" href="/api/auth/google">Continue with Google</a>
+    </section>
+
+    <section id="chatPanel" class="chat-layout hidden">
+      <aside class="panel sidebar">
+        <h2>Chat rooms</h2>
+        <form id="createRoomForm" class="create-room">
+          <input id="roomName" placeholder="New room name" minlength="2" maxlength="80" required>
+          <button type="submit">Create</button>
+        </form>
+        <div id="roomList" class="room-list"></div>
+      </aside>
+
+      <section class="panel conversation">
+        <div class="conversation-header">
+          <div>
+            <h2 id="currentRoomName">Choose a room</h2>
+            <p id="connectionStatus" class="status">Not connected</p>
+          </div>
+        </div>
+        <div id="messages" class="messages">
+          <p class="empty">Choose or create a room to start chatting.</p>
+        </div>
+        <form id="messageForm" class="message-form">
+          <input id="messageInput" placeholder="Write a message..." maxlength="2000" disabled autocomplete="off">
+          <button id="sendBtn" type="submit" disabled>Send</button>
+        </form>
+      </section>
+    </section>
+    <div id="toast" class="toast" role="status"></div>
+  </main>
+  <script src="/static/script.js"></script>
+</body>
+</html>
