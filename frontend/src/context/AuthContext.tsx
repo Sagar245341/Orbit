@@ -1,12 +1,39 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { authService } from "../services/authService";
 
-const AuthContext = createContext(null);
+export interface AuthUser {
+  id: number;
+  username: string;
+  email: string;
+}
+
+interface LoginCredentials {
+  email: string;
+  password: string;
+}
+
+interface RegisterDetails {
+  username: string;
+  email: string;
+  password: string;
+}
+
+interface AuthContextValue {
+  token: string | null;
+  user: AuthUser | null;
+  loading: boolean;
+  login: (credentials: LoginCredentials) => Promise<void>;
+  register: (details: RegisterDetails) => Promise<unknown>;
+  logout: () => void;
+}
+
+const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 const TOKEN_KEY = "orbit_access_token";
 
-export function AuthProvider({ children }) {
-  const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY));
-  const [user, setUser] = useState(null);
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -26,7 +53,7 @@ export function AuthProvider({ children }) {
     setToken(savedToken);
 
     authService.me()
-      .then((profile) => {
+      .then((profile: AuthUser) => {
         if (active) setUser(profile);
       })
       .catch(() => {
@@ -43,12 +70,12 @@ export function AuthProvider({ children }) {
     return () => { active = false; };
   }, []);
 
-  const login = useCallback(async (credentials) => {
+  const login = useCallback(async (credentials: LoginCredentials) => {
     const result = await authService.login(credentials);
     localStorage.setItem(TOKEN_KEY, result.access_token);
     setToken(result.access_token);
     try {
-      const profile = await authService.me();
+      const profile: AuthUser = await authService.me();
       setUser(profile);
     } catch (error) {
       localStorage.removeItem(TOKEN_KEY);
@@ -57,7 +84,7 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  const register = useCallback((details) => authService.register(details), []);
+  const register = useCallback((details: RegisterDetails) => authService.register(details), []);
 
   const logout = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
@@ -71,7 +98,7 @@ export function AuthProvider({ children }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export function useAuth() {
+export function useAuth(): AuthContextValue {
   const context = useContext(AuthContext);
   if (!context) throw new Error("useAuth must be used within AuthProvider");
   return context;

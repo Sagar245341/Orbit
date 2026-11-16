@@ -1,7 +1,7 @@
 import { Hash, Info, Menu, Plus } from "lucide-react";
 import { ConnectionStatus } from "./ConnectionStatus";
 
-export function ChatHeader({ room, status, onMenu, onCreateRoom }) {
+export function ChatHeader({ room, channel, status, onMenu, onCreateRoom }) {
   return (
     <header className="chat-header">
       <button className="icon-button mobile-menu-button" onClick={onMenu} aria-label="Open room navigation"><Menu size={19} /></button>
@@ -9,8 +9,8 @@ export function ChatHeader({ room, status, onMenu, onCreateRoom }) {
         <div className="chat-room-title">
           <span className="header-room-icon"><Hash size={18} /></span>
           <div className="chat-room-copy">
-            <h1>{room.name}</h1>
-            <p><span className="room-description-dot" /> A shared space for the conversation</p>
+            <h1>{channel ? `# ${channel.name}` : room.name}</h1>
+            <p><span className="room-description-dot" /> {channel?.topic || room.name}</p>
           </div>
         </div>
       ) : (

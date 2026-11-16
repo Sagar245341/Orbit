@@ -1,14 +1,34 @@
 import { useMemo, useState } from "react";
-import { Hash, Plus, Search, Settings2, X } from "lucide-react";
+import { Archive, Hash, Pencil, Plus, Search, Settings2, X } from "lucide-react";
 import { motion } from "framer-motion";
+import { Link } from "react-router-dom";
 import { UserProfile } from "./UserProfile";
 
-export function Sidebar({ rooms, activeRoom, pendingRoom, onSelectRoom, onCreateRoom, onSettings, theme, isLoading, mobileOpen, onClose }) {
+export function Sidebar({
+  rooms,
+  activeRoom,
+  pendingRoom,
+  onSelectRoom,
+  channels,
+  activeChannel,
+  onSelectChannel,
+  onCreateChannel,
+  onEditChannel,
+  onArchiveChannel,
+  onCreateRoom,
+  onSettings,
+  theme,
+  isLoading,
+  mobileOpen,
+  onClose,
+}) {
   const [query, setQuery] = useState("");
   const filteredRooms = useMemo(
     () => rooms.filter((room) => room.name.toLowerCase().includes(query.trim().toLowerCase())),
     [rooms, query]
   );
+  const selectedRoom = activeRoom || pendingRoom;
+  const canManageChannels = ["owner", "moderator"].includes(selectedRoom?.current_user_role);
 
   return (
     <>
@@ -34,6 +54,10 @@ export function Sidebar({ rooms, activeRoom, pendingRoom, onSelectRoom, onCreate
             <Plus size={16} />
           </button>
         </div>
+        <nav className="sidebar-discovery-links" aria-label="Room navigation">
+          <Link to="/"><Hash size={15} /> My Rooms</Link>
+          <Link to="/discover"><Search size={15} /> Discover Rooms</Link>
+        </nav>
         <label className="room-search">
           <Search size={15} aria-hidden="true" />
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Find a room" aria-label="Search rooms" />
@@ -67,6 +91,58 @@ export function Sidebar({ rooms, activeRoom, pendingRoom, onSelectRoom, onCreate
               <span>{query ? "No rooms match your search." : "No rooms yet."}</span>
               {!query && <button onClick={onCreateRoom}>Create your first room <Plus size={13} /></button>}
             </div>
+          )}
+        </nav>
+
+        <div className="sidebar-channel-heading">
+          <span>CHANNELS{selectedRoom ? ` · ${selectedRoom.name}` : ""}</span>
+          {selectedRoom && canManageChannels && (
+            <button type="button" className="icon-button tiny-icon-button" onClick={onCreateChannel} aria-label="Create a channel" title="Create a channel">
+              <Plus size={15} />
+            </button>
+          )}
+        </div>
+        <nav className="channel-navigation" aria-label="Room channels">
+          {selectedRoom && channels.map((channel) => {
+            const selected = activeChannel?.id === channel.id;
+            return (
+              <div className={`channel-row ${selected ? "channel-row-active" : ""}`} key={channel.id}>
+                <button
+                  type="button"
+                  className="channel-link"
+                  onClick={() => onSelectChannel(channel)}
+                  aria-current={selected ? "page" : undefined}
+                >
+                  <Hash size={15} />
+                  <span>{channel.name}</span>
+                </button>
+                {canManageChannels && (
+                  <span className="channel-actions">
+                    <button
+                      type="button"
+                      className="icon-button tiny-icon-button"
+                      onClick={(event) => { event.stopPropagation(); onEditChannel(channel); }}
+                      aria-label={`Edit ${channel.name}`}
+                      title={`Edit ${channel.name}`}
+                    >
+                      <Pencil size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-button tiny-icon-button"
+                      onClick={(event) => { event.stopPropagation(); onArchiveChannel(channel); }}
+                      aria-label={`Archive ${channel.name}`}
+                      title={`Archive ${channel.name}`}
+                    >
+                      <Archive size={13} />
+                    </button>
+                  </span>
+                )}
+              </div>
+            );
+          })}
+          {selectedRoom && channels.length === 0 && !isLoading && (
+            <div className="sidebar-empty">No active channels are available.</div>
           )}
         </nav>
 

@@ -1,31 +1,42 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createRoomSocket } from "../services/websocketService";
+import { createChannelSocket } from "../services/websocketService";
+import type { ChatMessage } from "../types";
+
+type ConnectionStatus = "disconnected" | "connecting" | "connected" | "reconnecting";
+type SocketPayload =
+  | (ChatMessage & { type: "message" })
+  | { type: "error"; detail?: string };
 
 const MAX_RETRY_DELAY = 30000;
 
-export function useWebSocket(roomId, token, onMessage, onServerError) {
-  const socketRef = useRef(null);
+export function useWebSocket(
+  channelId: number | undefined,
+  token: string | null | undefined,
+  onMessage: (message: ChatMessage) => void,
+  onServerError: (message: string) => void,
+) {
+  const socketRef = useRef<WebSocket | null>(null);
   const callbacksRef = useRef({ onMessage, onServerError });
-  const [status, setStatus] = useState("disconnected");
+  const [status, setStatus] = useState<ConnectionStatus>("disconnected");
 
   useEffect(() => {
     callbacksRef.current = { onMessage, onServerError };
   }, [onMessage, onServerError]);
 
   useEffect(() => {
-    if (!roomId || !token) {
+    if (!channelId || !token) {
       setStatus("disconnected");
       return undefined;
     }
 
     let disposed = false;
     let attempts = 0;
-    let retryTimer;
+    let retryTimer: number | undefined;
 
     const connect = () => {
       if (disposed) return;
       setStatus(attempts === 0 ? "connecting" : "reconnecting");
-      const socket = createRoomSocket(roomId, token);
+      const socket = createChannelSocket(channelId, token);
       socketRef.current = socket;
 
       socket.onopen = () => {
@@ -33,24 +44,26 @@ export function useWebSocket(roomId, token, onMessage, onServerError) {
         attempts = 0;
         setStatus("connected");
       };
-      socket.onmessage = (event) => {
+      socket.onmessage = (event: MessageEvent<string>) => {
         try {
-          const payload = JSON.parse(event.data);
-          if (payload?.type === "message") callbacksRef.current.onMessage?.(payload);
-          else if (payload?.type === "error") callbacksRef.current.onServerError?.(payload.detail || "The server rejected that message.");
+          const payload: SocketPayload = JSON.parse(event.data);
+          if (payload.type === "message") callbacksRef.current.onMessage(payload);
+          else if (payload.type === "error") {
+            callbacksRef.current.onServerError(payload.detail || "The server rejected that message.");
+          }
         } catch {
-          callbacksRef.current.onServerError?.("The chat server sent an unreadable response.");
+          callbacksRef.current.onServerError("The chat server sent an unreadable response.");
         }
       };
       socket.onerror = () => {
         if (!disposed) setStatus("reconnecting");
       };
-      socket.onclose = (event) => {
+      socket.onclose = (event: CloseEvent) => {
         if (socketRef.current === socket) socketRef.current = null;
         if (disposed) return;
         if (event.code === 1008) {
           setStatus("disconnected");
-          callbacksRef.current.onServerError?.(event.reason || "Your chat connection was not authorized.");
+          callbacksRef.current.onServerError(event.reason || "Your chat connection was not authorized.");
           return;
         }
         attempts += 1;
@@ -66,12 +79,12 @@ export function useWebSocket(roomId, token, onMessage, onServerError) {
       window.clearTimeout(retryTimer);
       const socket = socketRef.current;
       socketRef.current = null;
-      if (socket && socket.readyState < WebSocket.CLOSING) socket.close(1000, "Room changed");
+      if (socket && socket.readyState < WebSocket.CLOSING) socket.close(1000, "Channel changed");
       setStatus("disconnected");
     };
-  }, [roomId, token]);
+  }, [channelId, token]);
 
-  const send = useCallback((content) => {
+  const send = useCallback((content: string): boolean => {
     const socket = socketRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN) return false;
     socket.send(JSON.stringify({ content }));

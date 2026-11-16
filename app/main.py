@@ -6,9 +6,9 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
-from app.database.session import Base, engine
+from app.database.session import Base, engine, migrate_legacy_room_schema
 from app.database import models  # noqa: F401 - registers SQLAlchemy models
-from app.api import auth, rooms
+from app.api import auth, channels, invitations, rooms
 from app.core.config import OAUTH_COOKIE_SECURE, SECRET_KEY
 from app.websocket.chat import router as websocket_router
 from app.websocket.connection_manager import manager
@@ -32,6 +32,7 @@ class SPAStaticFiles(StaticFiles):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    migrate_legacy_room_schema()
     await connect_redis()
     listener_task = asyncio.create_task(listen_for_messages(manager))
     app.state.redis_listener_task = listener_task
@@ -58,6 +59,8 @@ app.add_middleware(
 
 app.include_router(auth.router, prefix="/api")
 app.include_router(rooms.router, prefix="/api")
+app.include_router(channels.router, prefix="/api")
+app.include_router(invitations.router, prefix="/api")
 app.include_router(websocket_router)
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 

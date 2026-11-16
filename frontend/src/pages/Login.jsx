@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Eye, EyeOff, LockKeyhole, Mail, MessageCircle, ShieldCheck, Sparkles } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { getApiError } from "../services/api";
+import { AUTH_RETURN_KEY, getSafeReturnTo } from "../utils/authReturn";
 
 export function Login() {
   const [email, setEmail] = useState("");
@@ -15,6 +16,8 @@ export function Login() {
   const [needsVerification, setNeedsVerification] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const returnTo = getSafeReturnTo(searchParams.get("returnTo") || localStorage.getItem(AUTH_RETURN_KEY));
 
   const submit = async (event) => {
     event.preventDefault();
@@ -23,7 +26,8 @@ export function Login() {
     setSubmitting(true);
     try {
       await login({ email: email.trim(), password });
-      navigate("/", { replace: true });
+      localStorage.removeItem(AUTH_RETURN_KEY);
+      navigate(returnTo, { replace: true });
     } catch (requestError) {
       setError(getApiError(requestError));
       setNeedsVerification(requestError?.response?.status === 403);
@@ -89,7 +93,7 @@ export function Login() {
               </button>
             </form>
             <div className="auth-trust"><ShieldCheck size={15} /> Your conversations stay yours.</div>
-            <p className="auth-switch">New to Orbit? <Link to="/register">Create an account <span>→</span></Link></p>
+            <p className="auth-switch">New to Orbit? <Link to={returnTo === "/" ? "/register" : `/register?returnTo=${encodeURIComponent(returnTo)}`}>Create an account <span>→</span></Link></p>
           </div>
           <div className="auth-card-footnote">By continuing, you agree to keep the conversation respectful.</div>
         </motion.section>

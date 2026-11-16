@@ -1,16 +1,27 @@
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertCircle, CheckCircle2, Info, X } from "lucide-react";
 
-const ToastContext = createContext(null);
+type ToastType = "success" | "error" | "info";
+interface Toast {
+  id: string;
+  message: string;
+  type: ToastType;
+}
+interface ToastContextValue {
+  notify: (message: string, type?: ToastType) => void;
+}
+
+const ToastContext = createContext<ToastContextValue | undefined>(undefined);
 const icons = { success: CheckCircle2, error: AlertCircle, info: Info };
 
-export function ToastProvider({ children }) {
-  const [toasts, setToasts] = useState([]);
-  const dismiss = useCallback((id) => {
+export function ToastProvider({ children }: { children: ReactNode }) {
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const dismiss = useCallback((id: string) => {
     setToasts((current) => current.filter((toast) => toast.id !== id));
   }, []);
-  const notify = useCallback((message, type = "info") => {
+  const notify = useCallback((message: string, type: ToastType = "info") => {
     const id = `${Date.now()}-${Math.random()}`;
     setToasts((current) => [...current.slice(-2), { id, message, type }]);
     window.setTimeout(() => dismiss(id), 3600);
@@ -23,7 +34,7 @@ export function ToastProvider({ children }) {
       <div className="toast-stack" aria-live="polite" aria-relevant="additions">
         <AnimatePresence>
           {toasts.map((toast) => {
-            const Icon = icons[toast.type] || Info;
+            const Icon = icons[toast.type];
             return (
               <motion.div
                 key={toast.id}
@@ -47,7 +58,7 @@ export function ToastProvider({ children }) {
   );
 }
 
-export function useToast() {
+export function useToast(): ToastContextValue {
   const context = useContext(ToastContext);
   if (!context) throw new Error("useToast must be used within ToastProvider");
   return context;

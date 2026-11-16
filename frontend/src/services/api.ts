@@ -1,9 +1,19 @@
-import axios from "axios";
+import axios, { isAxiosError } from "axios";
+
+interface ApiErrorDetail {
+  loc?: unknown[];
+  msg?: string;
+  message?: string;
+}
+
+interface ApiErrorBody {
+  detail?: string | ApiErrorDetail[] | ApiErrorDetail;
+}
 
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || "/api",
   headers: { "Content-Type": "application/json" },
-  timeout: 15000
+  timeout: 15000,
 });
 
 api.interceptors.request.use((config) => {
@@ -12,8 +22,12 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-export function getApiError(error) {
-  const detail = error?.response?.data?.detail;
+export function getApiError(error: unknown): string {
+  if (!isAxiosError<ApiErrorBody>(error)) {
+    return error instanceof Error ? error.message : "An unexpected error occurred.";
+  }
+
+  const detail = error.response?.data?.detail;
   if (typeof detail === "string") return detail;
   if (Array.isArray(detail)) {
     return detail.map((item) => {
@@ -23,7 +37,7 @@ export function getApiError(error) {
     }).join("; ");
   }
   if (typeof detail?.message === "string") return detail.message;
-  if (error?.code === "ECONNABORTED") return "The request timed out. Please try again.";
-  if (!error?.response) return "Could not reach the chat server. Check your connection and try again.";
+  if (error.code === "ECONNABORTED") return "The request timed out. Please try again.";
+  if (!error.response) return "Could not reach the chat server. Check your connection and try again.";
   return `Request failed (${error.response.status}). Please try again.`;
 }

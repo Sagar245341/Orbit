@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Eye, EyeOff, LockKeyhole, Mail, MessageCircle, ShieldCheck, UserRound } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { getApiError } from "../services/api";
+import { AUTH_RETURN_KEY, getSafeReturnTo } from "../utils/authReturn";
 
 export function Register() {
   const [username, setUsername] = useState("");
@@ -15,6 +16,8 @@ export function Register() {
   const [error, setError] = useState("");
   const { register } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const returnTo = getSafeReturnTo(searchParams.get("returnTo"));
 
   const submit = async (event) => {
     event.preventDefault();
@@ -26,12 +29,18 @@ export function Register() {
     setSubmitting(true);
     try {
       await register({ username: username.trim(), email: email.trim(), password });
-      navigate("/verify-email", { replace: true, state: { email: email.trim() } });
+      if (returnTo !== "/") localStorage.setItem(AUTH_RETURN_KEY, returnTo);
+      const returnQuery = returnTo === "/" ? "" : `&returnTo=${encodeURIComponent(returnTo)}`;
+      navigate(`/verify-email?email=${encodeURIComponent(email.trim())}${returnQuery}`, {
+        replace: true,
+        state: { email: email.trim(), returnTo },
+      });
     } catch (requestError) {
       if (requestError?.response?.status === 503) {
-        navigate(`/verify-email?email=${encodeURIComponent(email.trim())}`, {
+        if (returnTo !== "/") localStorage.setItem(AUTH_RETURN_KEY, returnTo);
+        navigate(`/verify-email?email=${encodeURIComponent(email.trim())}${returnTo === "/" ? "" : `&returnTo=${encodeURIComponent(returnTo)}`}`, {
           replace: true,
-          state: { email: email.trim(), sendFailed: true, error: getApiError(requestError) }
+          state: { email: email.trim(), returnTo, sendFailed: true, error: getApiError(requestError) }
         });
         return;
       }
@@ -93,7 +102,7 @@ export function Register() {
                 {submitting ? <><span className="button-spinner" /> Creating account…</> : <>Create account <span aria-hidden="true">→</span></>}
               </button>
             </form>
-            <p className="auth-switch">Already have an account? <Link to="/login">Sign in <span>→</span></Link></p>
+            <p className="auth-switch">Already have an account? <Link to={returnTo === "/" ? "/login" : `/login?returnTo=${encodeURIComponent(returnTo)}`}>Sign in <span>→</span></Link></p>
           </div>
           <div className="auth-card-footnote">By continuing, you agree to keep the conversation respectful.</div>
         </motion.section>

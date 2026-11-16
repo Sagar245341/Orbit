@@ -1,14 +1,19 @@
 import { AnimatePresence, motion } from "framer-motion";
+import type { ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { Login } from "./pages/Login";
 import { Register } from "./pages/Register";
 import { VerifyEmail } from "./pages/VerifyEmail";
 import { ChatDashboard } from "./pages/ChatDashboard";
+import { DiscoverRoomsPage } from "./pages/DiscoverRoomsPage";
+import { RoomDetailsPage } from "./pages/RoomDetailsPage";
+import { InvitationPreviewPage } from "./pages/InvitationPreviewPage";
 import { useAuth } from "./context/AuthContext";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { getSafeReturnTo } from "./utils/authReturn";
 
-function RouteTransition({ children }) {
+function RouteTransition({ children }: { children: ReactNode }) {
   return (
     <motion.div
       className="route-frame"
@@ -25,6 +30,9 @@ function RouteTransition({ children }) {
 function AppRoutes() {
   const location = useLocation();
   const { user, loading } = useAuth();
+  const loginReturnTo = getSafeReturnTo(
+    new URLSearchParams(location.search).get("returnTo") || localStorage.getItem("orbit_auth_return_to")
+  );
 
   if (loading) {
     return (
@@ -37,9 +45,10 @@ function AppRoutes() {
   return (
     <AnimatePresence mode="wait" initial={false}>
       <Routes location={location} key={location.pathname}>
-        <Route path="/login" element={user ? <Navigate to="/" replace /> : <RouteTransition><Login /></RouteTransition>} />
+        <Route path="/login" element={user ? <Navigate to={loginReturnTo} replace /> : <RouteTransition><Login /></RouteTransition>} />
         <Route path="/register" element={user ? <Navigate to="/" replace /> : <RouteTransition><Register /></RouteTransition>} />
         <Route path="/verify-email" element={<RouteTransition><VerifyEmail /></RouteTransition>} />
+        <Route path="/invite/:inviteCode" element={<RouteTransition><InvitationPreviewPage /></RouteTransition>} />
         <Route
           path="/"
           element={
@@ -48,6 +57,8 @@ function AppRoutes() {
             </ProtectedRoute>
           }
         />
+        <Route path="/discover" element={<ProtectedRoute><RouteTransition><DiscoverRoomsPage /></RouteTransition></ProtectedRoute>} />
+        <Route path="/rooms/:roomId" element={<ProtectedRoute><RouteTransition><RoomDetailsPage /></RouteTransition></ProtectedRoute>} />
         <Route path="*" element={<Navigate to={user ? "/" : "/login"} replace />} />
       </Routes>
     </AnimatePresence>

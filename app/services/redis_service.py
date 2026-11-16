@@ -22,21 +22,26 @@ async def publish_room_message(room_id: int, message: dict):
         raise RuntimeError("Redis is not connected")
     await redis_client.publish(f"chat:room:{room_id}", json.dumps(message, default=str))
 
+async def publish_channel_message(channel_id: int, message: dict):
+    if redis_client is None:
+        raise RuntimeError("Redis is not connected")
+    await redis_client.publish(f"chat:channel:{channel_id}", json.dumps(message, default=str))
+
 async def listen_for_messages(manager):
     """Subscribe to every room channel and deliver messages to this server's local sockets."""
     if redis_client is None:
         raise RuntimeError("Redis is not connected")
     pubsub = redis_client.pubsub()
-    await pubsub.psubscribe("chat:room:*")
+    await pubsub.psubscribe("chat:room:*", "chat:channel:*")
     try:
         async for event in pubsub.listen():
             if event["type"] != "pmessage":
                 continue
             try:
                 channel = event["channel"]
-                room_id = int(channel.rsplit(":", 1)[1])
+                room_or_channel_id = int(channel.rsplit(":", 1)[1])
                 payload = json.loads(event["data"])
-                await manager.broadcast_local(room_id, payload)
+                await manager.broadcast_local(room_or_channel_id, payload)
             except (ValueError, TypeError, json.JSONDecodeError):
                 # Ignore malformed broker messages rather than killing the listener.
                 continue

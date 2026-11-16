@@ -1,4 +1,5 @@
 .env
+.env.*
 env
 .venv
 venv
@@ -11,3 +12,16 @@ chat-data
 frontend/node_modules
 frontend/dist
 frontend/.env
+frontend/.env.*
+node_modules
+*.db
+*.db-shm
+*.db-wal
+*.backup
+*.pre-postgres-backup
+backups
+*.pem
+*.key
+*.p12
+*.pfx
+secrets

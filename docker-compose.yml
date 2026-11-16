@@ -1,4 +1,20 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:-orbit}"
+      POSTGRES_USER: "${POSTGRES_USER:-orbit}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the root .env file}"
+    ports:
+      - "5432:5432"
+    volumes:
+      - orbit-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   redis:
     image: redis:7-alpine
     ports:
@@ -14,8 +30,8 @@ services:
     ports:
       - "8000:8000"
     environment:
-      SECRET_KEY: "local-development-secret-change-this"
-      DATABASE_URL: "sqlite:////data/chat.db"
+      SECRET_KEY: "${SECRET_KEY:?Set SECRET_KEY in the root .env file}"
+      DATABASE_URL: "postgresql+psycopg://${POSTGRES_USER:-orbit}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the root .env file}@postgres:5432/${POSTGRES_DB:-orbit}"
       REDIS_URL: "redis://redis:6379/0"
       ACCESS_TOKEN_EXPIRE_MINUTES: "1440"
       SMTP_HOST: "${SMTP_HOST:-}"
@@ -26,8 +42,11 @@ services:
       SMTP_USE_SSL: "${SMTP_USE_SSL:-false}"
       SMTP_STARTTLS: "${SMTP_STARTTLS:-true}"
       FRONTEND_BASE_URL: "${FRONTEND_BASE_URL:-http://localhost:8000}"
-    volumes:
-      - ./chat-data:/data
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
+
+volumes:
+  orbit-postgres-data:

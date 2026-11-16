@@ -1,153 +1,201 @@
-# Orbit — FastAPI WebSocket Chat
+# Orbit
 
-Orbit is a React chat frontend connected to the existing FastAPI, SQLite, JWT, and Redis Pub/Sub backend. The frontend uses Vite in development and can also be built into `frontend/dist` for FastAPI to serve.
+<p align="center">
+  <img src="docs/orbit-banner.svg" alt="Orbit community chat project banner" width="100%" />
+</p>
 
-## Requirements
+[![CI](https://github.com/Sagar245341/Orbit/actions/workflows/ci.yml/badge.svg)](https://github.com/Sagar245341/Orbit/actions/workflows/ci.yml)
 
-- Node.js 20.19+ and npm
-- Python 3.11+
-- Redis (or Docker Desktop to run Redis)
+Orbit is a real-time community chat application. This milestone keeps the existing FastAPI authentication and WebSocket/Redis messaging, adds PostgreSQL as the production database, and introduces rooms, text channels, invitations, and public room discovery. The React frontend is being migrated incrementally to TypeScript; active entry points, contexts, API services, and the chat/channel flow are typed while the existing JSX components remain in use.
 
-## Configure and start the backend
+## Features
 
-From the project root, create the backend settings file only if you do not already have one:
+- JWT-based registration, sign-in, email verification, and OAuth support.
+- Public and private rooms with descriptions, icons, categories, member limits, owners, and moderators.
+- Text channels with topics and categories; owners/moderators can create, edit, and archive channels.
+- Existing room messages are assigned to a `general` channel during the additive schema upgrade.
+- Authenticated WebSocket chat backed by Redis Pub/Sub, with a legacy room WebSocket route retained.
+- Shareable invitations with expiry, use limits, revocation, and authenticated acceptance.
+- Public room discovery, room details, membership lists, and responsive dark-themed navigation.
 
-```powershell
-Set-Location D:\project\websocket-chat-app
-if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+Voice/video, direct messages, file uploads, rich notifications, and online presence are separate milestones and are not represented as working features in this delivery.
+
+## Screenshots
+
+The banner above is an original project illustration. Application screenshots can be added here after running the frontend against a configured local database; no sample room data is presented as live application content.
+
+## Architecture
+
+```text
+React 18 + Vite + TypeScript (incremental conversion)
+        | HTTP: Axios + bearer JWT       | WebSocket: bearer JWT
+        v                                 v
+FastAPI REST API                    FastAPI WebSocket
+        |                                 |
+        +---------- SQLAlchemy -----------+
+                    PostgreSQL
+        WebSocket events via Redis Pub/Sub
 ```
 
-Edit the project-root `.env` and set your SMTP values before registering users. Make sure Redis is running at the address in `REDIS_URL` (by default, `localhost:6379`). If you use Docker and the `chat-redis` container already exists, run `docker start chat-redis`; otherwise, only if port 6379 is free, run:
+The browser development server proxies `/api` and `/ws` to FastAPI. In production, the backend can serve the Vite build and client-side routes. SQLAlchemy supports both the legacy SQLite database and PostgreSQL; new deployments use PostgreSQL. Existing SQLite data is copied only by the explicit migration command described below.
+
+## Data model
+
+- `users`: accounts, credentials, and profile identity.
+- `rooms`: community metadata and owner; the historical `created_by` column remains the stored owner ID and is exposed as `owner_id`.
+- `room_members`: unique room/user memberships and `owner`, `moderator`, or `member` roles.
+- `channels`: room-scoped text channels, category, topic, order, and active/archive status.
+- `room_invitations`: unique, unpredictable invitation codes, expiration, usage limit/count, creator, and active status.
+- `messages`: existing chat history, now associated with a channel. `room_id` remains for compatibility and access checks.
+
+On startup, SQLAlchemy creates missing tables and an idempotent additive migration updates older SQLite schemas. Existing room and message IDs are retained, room creators are backfilled as owners, member counts are recomputed, each room receives a `general` channel, and old messages are associated with it. No existing table is dropped or recreated.
+
+### SQLite-to-PostgreSQL migration
+
+The migration command makes a SQLite online backup, checks that the PostgreSQL target has no tables, applies only the app's additive legacy-schema upgrades, copies rows in foreign-key order, repairs PostgreSQL ID sequences, and verifies per-table row counts. It refuses to overwrite a backup or copy into a non-empty target. The exact pre-upgrade source is retained in the backup; the migration has not been run against the local database automatically.
+
+1. Copy `.env.example` to `.env`, set a private `SECRET_KEY` and a strong URL-safe PostgreSQL password (letters, digits, hyphens, and underscores avoid URI escaping issues).
+2. Start the PostgreSQL service:
+
+   ```powershell
+   docker compose up -d postgres
+   ```
+
+3. If you have an existing `chat.db`, migrate it from the repository root. Set the target URL to the host-accessible PostgreSQL address; the example below uses placeholders, not actual credentials:
+
+   ```powershell
+   $env:POSTGRES_MIGRATION_SOURCE_URL = "sqlite:///./chat.db"
+   $env:DATABASE_URL = "postgresql+psycopg://orbit:URL_ENCODED_PASSWORD@localhost:5432/orbit"
+   python -m scripts.migrate_sqlite_to_postgres --backup .\backups\chat-before-postgres.db
+   ```
+
+   Review the row-count report and retain the generated backup. Do not start the app against the target before migration; startup creates application tables, and migration correctly refuses a target that is no longer empty. For a fresh install with no SQLite data, skip this command.
+
+4. Configure the normal `DATABASE_URL` in `.env` for local FastAPI use, or use Docker Compose, which connects the app container to the Compose PostgreSQL service.
+
+## API
+
+All room, channel, and invitation-management/acceptance routes require `Authorization: Bearer <access_token>`. Invitation preview is intentionally public. Authentication routes are listed in the FastAPI OpenAPI page at `/docs`.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/rooms` | Create a room, its owner membership, a `general` channel, and an initial invitation |
+| `GET` | `/api/rooms` | List rooms the signed-in user belongs to |
+| `GET` | `/api/rooms/discover?q=&category=&page=&page_size=` | Search paginated public rooms only |
+| `GET` | `/api/rooms/{room_id}` | Get room details; private rooms require membership |
+| `POST` | `/api/rooms/{room_id}/join` | Join a public room |
+| `GET` | `/api/rooms/{room_id}/members` | List room members |
+| `GET` | `/api/rooms/{room_id}/messages` | Read the legacy `general` channel history |
+| `GET` | `/api/rooms/{room_id}/channels` | List active channels (members only) |
+| `POST` | `/api/rooms/{room_id}/channels` | Create a channel (owner/moderator) |
+| `PATCH` | `/api/channels/{channel_id}` | Edit channel name, topic, or category (owner/moderator) |
+| `DELETE` | `/api/channels/{channel_id}` | Archive a channel while retaining its message history |
+| `GET` | `/api/channels/{channel_id}/messages` | Read channel history (members only) |
+| `POST` | `/api/rooms/{room_id}/invitations` | Create an invitation (owner/moderator) |
+| `GET` | `/api/rooms/{room_id}/invitations` | List invitations (owner/moderator) |
+| `GET` | `/api/invitations/{invite_code}` | Preview a valid invitation; no authentication required |
+| `POST` | `/api/invitations/{invite_code}/accept` | Join via invitation (authentication required) |
+| `DELETE` | `/api/invitations/{invite_id}` | Revoke an invitation (owner/moderator) |
+| `WS` | `/ws/channels/{channel_id}?token=<JWT>` | Receive/send realtime channel messages |
+| `WS` | `/ws/rooms/{room_id}?token=<JWT>` | Legacy WebSocket route mapped to the room's `general` channel |
+
+Invitation creation accepts `expiration` values `never`, `1h`, `24h`, or `7d`, and `max_uses` values `null`, `1`, `5`, or `10`. Expired, revoked, exhausted, and invalid codes cannot be accepted. A full room returns HTTP `409`; unauthorized private-room access returns `403`.
+
+## Local development
+
+Requirements: Python 3.11+, Node.js 20.19+, npm, and Docker (for PostgreSQL and Redis).
+
+Configure `.env` using `.env.example`, then start the services:
 
 ```powershell
-docker run --name chat-redis -p 6379:6379 -d redis:7-alpine
+docker compose up -d postgres redis
 ```
 
-An installed Redis server can be used instead.
-
-In a second PowerShell terminal, start FastAPI:
+Install backend dependencies and start FastAPI:
 
 ```powershell
-Set-Location D:\project\websocket-chat-app
-py -m venv .venv
+python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-py -m pip install -r requirements.txt
+python -m pip install -r requirements.txt
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-The API is available at `http://localhost:8000`, its health check is `http://localhost:8000/health`, and its interactive docs are at `http://localhost:8000/docs`. A healthy check returns `{"status":"ok"}`. Redis must be running for FastAPI startup and real-time message broadcasting.
-
-## Configure email verification
-
-Registration sends a one-time verification link through SMTP. Add your provider's settings to the project-root `.env` before registering users:
-
-```dotenv
-SMTP_HOST=smtp.example.com
-SMTP_PORT=587
-SMTP_USERNAME=your-smtp-username
-SMTP_PASSWORD=your-smtp-password
-SMTP_FROM_EMAIL=Orbit <no-reply@example.com>
-SMTP_USE_SSL=false
-SMTP_STARTTLS=true
-FRONTEND_BASE_URL=http://localhost:5173
-```
-
-For an SSL-only provider on port 465, set `SMTP_USE_SSL=true` and `SMTP_STARTTLS=false`. `FRONTEND_BASE_URL` must be the origin where the React app is reachable; for the Docker-built app use `http://localhost:8000`. Restart FastAPI after changing SMTP settings. Registration returns an explicit error if SMTP is not configured or delivery fails. Unverified accounts cannot sign in; the verification page can resend a link, which expires after 24 hours. Previously existing accounts continue to work.
-
-## Configure and start the React frontend
-
-In a third PowerShell terminal:
+In another terminal, install frontend dependencies and start Vite:
 
 ```powershell
-Set-Location D:\project\websocket-chat-app\frontend
-if (-not (Test-Path .env)) { Copy-Item .env.example .env }
-npm install
+Set-Location frontend
+npm ci
 npm run dev
 ```
 
-Open the Vite URL shown in the terminal (normally `http://localhost:5173`). In development, Vite proxies `/api` and `/ws` to `http://localhost:8000`; set `VITE_BACKEND_URL` in `frontend/.env` if the backend listens elsewhere.
+Open `http://localhost:5173`; the API is at `http://localhost:8000`, health check at `/health`, and API docs at `/docs`. Set `FRONTEND_BASE_URL` to the browser-visible frontend origin so invitation links use the right host. Registration email verification requires SMTP settings; existing verified accounts can sign in without SMTP.
 
-The frontend's default API base is `/api`. For a separately hosted frontend, set `VITE_API_BASE_URL` to the backend API base ending in `/api`, and `VITE_WS_BASE_URL` to the backend WebSocket origin. Use HTTPS/WSS in production. Do not put secrets in Vite environment variables; they are public in the built client.
+### Docker
 
-### If Vite shows `ECONNREFUSED`
-
-This means the Vite proxy cannot reach FastAPI at `VITE_BACKEND_URL` (by default `http://localhost:8000`). It is not an npm-install error. Keep Vite running, start Redis and FastAPI in separate terminals as above, and check:
-
-```powershell
-Test-NetConnection localhost -Port 8000
-Invoke-RestMethod http://localhost:8000/health
-```
-
-If FastAPI uses another port, set `VITE_BACKEND_URL` in `frontend/.env` to that address and restart Vite. Copying `frontend/.env.example` configures only the frontend; SMTP settings belong in the project-root `.env`. If registration returns HTTP 503, check the root SMTP settings and restart FastAPI.
-
-## Production build
-
-Build the React app from `frontend`:
-
-```powershell
-npm run build
-```
-
-The build is written to `frontend/dist`. Restart FastAPI after building; its root serves the React app and its client-side routes, while `/api` and `/ws` remain the backend endpoints. Docker builds the React app in a separate Node stage automatically:
+Set `SECRET_KEY` and PostgreSQL settings in the root `.env`. For a fresh database, start the complete app with:
 
 ```powershell
 docker compose up --build
 ```
 
-## Try it with two users
-
-1. Configure SMTP and start Redis, FastAPI, and the Vite frontend (or use Docker Compose).
-2. Open the Vite URL in two separate browser profiles or private windows.
-3. Register a different username and email in each profile, open each verification email, then sign in.
-4. In the first profile, create a room.
-5. In the second profile, select that room from the room list; selecting a room joins it before history is loaded and the WebSocket connects.
-6. Send messages from either profile and confirm they appear in both.
-
-## Verification checks
-
-From `frontend`, run the production build and dependency audit:
+For an existing SQLite install, start only `postgres`, run and verify the migration above, then start the app:
 
 ```powershell
-npm run build
-npm audit
+docker compose up --build
 ```
 
-For an end-to-end manual check, confirm `/health` returns `{"status":"ok"}`, register and verify two different email addresses, then sign in from separate browser profiles, join the same room, and send a message from each. The sender and the other participant should receive each message in real time.
+The app and built frontend are served at `http://localhost:8000`. PostgreSQL data is stored in the `orbit-postgres-data` named volume; Redis is used for cross-instance WebSocket message delivery.
 
-## Backend API used by the frontend
+## Tests and checks
 
-| Method | Path | Purpose |
-|---|---|---|
-| POST | `/api/auth/register` | Register with username, email, and password |
-| POST | `/api/auth/login` | Sign in and receive a JWT |
-| GET | `/api/auth/me` | Load the signed-in user |
-| POST | `/api/auth/verify-email` | Verify an email using its one-time token |
-| POST | `/api/auth/resend-verification` | Resend a pending verification email |
-| GET | `/api/rooms` | List available rooms |
-| POST | `/api/rooms` | Create a room |
-| POST | `/api/rooms/{room_id}/join` | Join a room |
-| GET | `/api/rooms/{room_id}/messages` | Load room history |
-| WS | `/ws/rooms/{room_id}?token=JWT` | Exchange live messages |
-
-## Security notes
-
-For this learning project, the JWT is stored in `localStorage`, which is accessible to JavaScript running on the same origin and therefore exposed by an XSS vulnerability. Production apps should consider secure, HttpOnly cookie-based sessions or another carefully designed token flow, use HTTPS/WSS, apply a strong private `SECRET_KEY`, and prevent XSS. The backend's WebSocket JWT is passed in the query string, so production infrastructure should avoid recording query strings in logs or use short-lived WebSocket tickets.
-
-## Push this project to GitHub
-
-The root `.gitignore` excludes local environment files (`.env`, `env`, and `frontend/.env`), Python environments, SQLite databases, Docker data, `node_modules`, and the Vite build output. Commit `.env.example` files, but never commit real SMTP credentials, JWT secrets, or database files.
-
-The local Git repository is initialized on `main` but is not connected to GitHub yet. Create an **empty** repository on GitHub, then from the project root connect it and push:
+From the repository root:
 
 ```powershell
-Set-Location D:\project\websocket-chat-app
+python -m pip install -r requirements-dev.txt
+python -m pytest
+```
+
+The backend tests use isolated temporary SQLite databases and do not require live PostgreSQL or Redis. They cover room creation, discovery/private-room exclusion, invitations and permissions, channel permissions/lifecycle, additive legacy-schema migration, and SQLite-to-PostgreSQL copy safety/data preservation.
+
+From `frontend`:
+
+```powershell
+npm run typecheck
+npm run build
+```
+
+## Manual feature checks
+
+Example invitation URL:
+
+```text
+http://localhost:5173/invite/AbC123Xy
+```
+
+1. Sign in, create a public or private room, and use **Share invitation** from its details page.
+2. Select expiry and usage options, create a link, then copy it or use the browser share sheet.
+3. Open the link in a private browser window. Check room details and inviter display without exposing email addresses.
+4. Sign in or register and verify email. Confirm the browser returns to the invitation and opens the joined room.
+5. In chat, create a text channel as the owner/moderator, edit its topic, archive it, and confirm the channel disappears while other channel history remains.
+6. Open two signed-in browsers in the same channel and exchange messages to verify WebSocket/Redis delivery.
+7. Search Discover Rooms and confirm private rooms never appear. Confirm that a full room refuses new members.
+
+## GitHub setup and push
+
+The repository ignores `.env`, frontend environment files, database/backup files, virtual environments, `node_modules`, build output, and test caches. Commit `.env.example`, never real credentials, databases, or personal data. GitHub Actions runs backend tests and the frontend production build.
+
+```powershell
 git status --short
 git check-ignore -v .env frontend/.env chat.db
 git remote add origin https://github.com/<your-account>/<your-repository>.git
 git add .
 git status --short
-git commit -m "Build Orbit chat application"
+git commit -m "Add channel-based chat and PostgreSQL migration"
 git push -u origin main
 ```
 
-Replace the URL with your repository's HTTPS or SSH URL. If `git remote add origin` reports that `origin` already exists, inspect it with `git remote -v` and update it only if it is incorrect. Authenticate with Git Credential Manager, GitHub CLI, or your SSH key; do not put a personal access token in the remote URL. Review `git status --short` before committing to ensure only intended source files are included.
+Use Git Credential Manager, GitHub CLI, or SSH; never put a personal access token in the remote URL. Review `git status --short` before committing.
+
+## Security notes
+
+Use HTTPS/WSS and a strong private signing key in production. The existing frontend stores JWTs in `localStorage`, and WebSocket authentication uses a query-string token; production logging should redact query strings. Treat invitation URLs as bearer credentials: anyone holding an active link may join its room. Room previews expose only room information and inviter username, not email or other account data.

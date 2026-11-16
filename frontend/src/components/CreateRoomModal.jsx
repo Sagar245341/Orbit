@@ -7,6 +7,11 @@ import { useToast } from "../context/ToastContext";
 
 export function CreateRoomModal({ open, onClose, onCreated }) {
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [iconUrl, setIconUrl] = useState("");
+  const [roomType, setRoomType] = useState("public");
+  const [category, setCategory] = useState("");
+  const [maxMembers, setMaxMembers] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const inputRef = useRef(null);
   const { notify } = useToast();
@@ -23,6 +28,11 @@ export function CreateRoomModal({ open, onClose, onCreated }) {
 
   const close = () => {
     setName("");
+    setDescription("");
+    setIconUrl("");
+    setRoomType("public");
+    setCategory("");
+    setMaxMembers("");
     onClose();
   };
 
@@ -35,9 +45,21 @@ export function CreateRoomModal({ open, onClose, onCreated }) {
     }
     setSubmitting(true);
     try {
-      const room = await roomService.create(roomName);
+      const room = await roomService.create({
+        name: roomName,
+        description: description.trim(),
+        icon_url: iconUrl.trim() || null,
+        room_type: roomType,
+        category: category.trim() || null,
+        max_members: maxMembers ? Number(maxMembers) : null,
+      });
       notify(`“${room.name}” is ready.`, "success");
       setName("");
+      setDescription("");
+      setIconUrl("");
+      setRoomType("public");
+      setCategory("");
+      setMaxMembers("");
       onCreated(room);
     } catch (error) {
       notify(getApiError(error), "error");
@@ -84,6 +106,25 @@ export function CreateRoomModal({ open, onClose, onCreated }) {
                 />
               </div>
               <span className="field-hint">Choose a name that’s easy for your team to find.</span>
+              <label className="field-label" htmlFor="room-description">Description</label>
+              <textarea id="room-description" value={description} onChange={(event) => setDescription(event.target.value)} maxLength={1000} placeholder="What will your community talk about?" />
+              <label className="field-label" htmlFor="room-icon">Icon image URL <span className="optional-label">optional</span></label>
+              <input id="room-icon" value={iconUrl} onChange={(event) => setIconUrl(event.target.value)} maxLength={500} placeholder="https://example.com/icon.png" />
+              <div className="form-grid-two">
+                <div>
+                  <label className="field-label" htmlFor="room-type">Room type</label>
+                  <select id="room-type" value={roomType} onChange={(event) => setRoomType(event.target.value)}>
+                    <option value="public">Public — discoverable</option>
+                    <option value="private">Private — invitation only</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="field-label" htmlFor="room-category">Category <span className="optional-label">optional</span></label>
+                  <input id="room-category" value={category} onChange={(event) => setCategory(event.target.value)} maxLength={60} placeholder="Technology" />
+                </div>
+              </div>
+              <label className="field-label" htmlFor="room-limit">Maximum members <span className="optional-label">optional</span></label>
+              <input id="room-limit" type="number" min="1" max="10000" value={maxMembers} onChange={(event) => setMaxMembers(event.target.value)} placeholder="No limit" />
               <div className="modal-actions">
                 <button type="button" className="button-outline" onClick={close} disabled={submitting}>Cancel</button>
                 <button type="submit" className="button-primary" disabled={submitting || name.trim().length < 2}>

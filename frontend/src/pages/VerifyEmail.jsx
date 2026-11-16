@@ -4,10 +4,14 @@ import { motion } from "framer-motion";
 import { CheckCircle2, Mail, MessageCircle, RotateCw, ShieldCheck, XCircle } from "lucide-react";
 import { authService } from "../services/authService";
 import { getApiError } from "../services/api";
+import { AUTH_RETURN_KEY, getSafeReturnTo } from "../utils/authReturn";
 
 export function VerifyEmail() {
   const location = useLocation();
   const params = new URLSearchParams(location.search);
+  const returnTo = getSafeReturnTo(
+    location.state?.returnTo || params.get("returnTo") || localStorage.getItem(AUTH_RETURN_KEY)
+  );
   const token = params.get("token");
   const [email, setEmail] = useState(location.state?.email || params.get("email") || "");
   const [status, setStatus] = useState(token ? "verifying" : location.state?.sendFailed ? "error" : "pending");
@@ -93,8 +97,8 @@ export function VerifyEmail() {
           </form>
         )}
 
-        {status === "verified" && <Link className="button-primary verification-continue" to="/login">Continue to sign in <span>→</span></Link>}
-        <p className="verification-footer"><MessageCircle size={14} /> Need to use another address? <Link to="/register">Create a new account</Link></p>
+        {status === "verified" && <Link className="button-primary verification-continue" to={returnTo === "/" ? "/login" : `/login?returnTo=${encodeURIComponent(returnTo)}`}>Continue to sign in <span>→</span></Link>}
+        <p className="verification-footer"><MessageCircle size={14} /> Need to use another address? <Link to={returnTo === "/" ? "/register" : `/register?returnTo=${encodeURIComponent(returnTo)}`}>Create a new account</Link></p>
       </motion.section>
     </main>
   );
